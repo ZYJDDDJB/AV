@@ -1,0 +1,131 @@
+# 🌍 AV导航 - 全世界最强大的成人视频导航站
+
+![GitHub stars](https://img.shields.io/github/stars/ZYJDDDJB/AV.svg)
+![GitHub Pages](https://img.shields.io/badge/Hosted%20with-GitHub%20Pages-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+**致力于打造全球最强大、最好用、最全面的成人视频网站导航站**。
+
+收录全球优质AV站点，持续更新，欢迎全球狼友共同维护与完善。
+
+---
+
+### 在线访问 / Live Demo
+**https://zyj888.top**
+
+---
+
+## ✨ 项目愿景
+
+我们希望把这个导航站打造成**全世界狼友首选**的AV门户：界面美观、功能强大、资源全面、更新及时。
+
+无论你是想找国产、欧美、日韩还是其他特色资源，都能在这里快速找到入口。
+
+---
+
+## 🚀 当前特色
+
+- 赛博朋克暗黑风格界面（手机端适配良好）
+- 年龄验证 + 密码保护
+- 响应式卡片设计 + 悬浮特效
+- 支持搜索、随机推荐等功能（持续开发中）
+- 纯静态部署，访问速度快且稳定
+- 全球狼友共同维护
+
+---
+
+## 🤝 欢迎全球狼友共建！
+
+**本项目完全开源开放**，真诚欢迎所有狼友参与贡献！
+
+不管你是补充新站点、优化 UI、美化样式、开发新功能，还是提出建议，都非常欢迎！
+
+**所有合理、有价值的建议和贡献，我们都会认真对待并优先处理。**
+
+### 参与贡献方式
+
+- **补充站点**：发现优秀、稳定的AV网站，欢迎提交 Issue 或 Pull Request
+- **界面优化**：觉得设计、颜色、排版可以更好？大胆改！
+- **功能开发**：搜索增强、收藏夹、标签系统、主题切换、多语言等想法都欢迎
+- **Bug反馈**：发现任何问题请及时告知
+
+**提交前建议先提 Issue 讨论**，避免重复劳动。
+
+---
+
+## 贡献指南
+
+1. Fork 本仓库
+2. 在 `index.html` 中按格式添加新站点（或修改代码）
+3. 提交 Pull Request 并描述修改内容
+4. 通过 Review 后即可合并
+
+---
+
+## ⚠️ 重要声明
+
+- 本站**仅作为导航索引**，不提供任何视频、图片或下载资源。
+- 所有链接均指向第三方网站，与本项目无关。
+- 请遵守当地法律法规，理性、合法使用。
+- 本项目坚决不接受任何涉及未成年人的内容。
+
+---
+
+## English Version | 英文版
+
+# 🌍 AV Navigation - The Most Powerful Adult Video Navigation Site
+
+**Dedicated to building the world's most powerful, user-friendly, and comprehensive AV website navigation.**
+
+We aim to become the preferred AV portal for users worldwide.
+
+---
+
+### Live Demo
+**https://zyj888.top**
+
+---
+
+## ✨ Vision
+
+To create the **best AV navigation site in the world** — beautiful interface, powerful features, comprehensive resources, and frequently updated.
+
+---
+
+## 🤝 Open to Global Contributions
+
+This is an **open source project**. We warmly welcome contributions from everyone!
+
+Whether you want to add new sites, improve the UI/UX, develop new features, or just give suggestions — all reasonable contributions will be seriously considered.
+
+### How to Contribute
+
+- Add new websites (highly recommended)
+- UI/Design improvements
+- New features (search, favorites, tags, themes, etc.)
+- Bug reports and suggestions
+
+Feel free to open Issues or submit Pull Requests.
+
+---
+
+## ⚠️ Disclaimer
+
+- This site is **only a navigation index**, no videos or files are hosted.
+- All links point to third-party websites and have no relation to this project.
+- Please comply with local laws and use responsibly.
+- No underage content is allowed.
+
+---
+
+## 致谢 / Thanks
+
+感谢每一位为本项目贡献站点、代码、建议的狼友！
+
+你的每一次 Star、Issue、PR 都是对项目最大的支持 ❤️
+
+**让我们一起把这个导航站打造成为全球最强！**
+
+---
+
+**狼友们，冲！冲！冲！**
