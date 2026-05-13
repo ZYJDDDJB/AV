@@ -1,5 +1,7 @@
 # 🌍 AV导航 - 全世界最强大的成人视频导航站
 
+**中文** | [English](README/README_EN.md)
+
 ![GitHub stars](https://img.shields.io/github/stars/ZYJDDDJB/AV.svg)
 ![GitHub Pages](https://img.shields.io/badge/Hosted%20with-GitHub%20Pages-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -10,7 +12,7 @@
 
 ---
 
-### 在线访问 / Live Demo
+### 在线访问
 **https://zyj888.top**
 
 ---
@@ -71,61 +73,10 @@
 
 ---
 
-## English Version | 英文版
-
-# 🌍 AV Navigation - The Most Powerful Adult Video Navigation Site
-
-**Dedicated to building the world's most powerful, user-friendly, and comprehensive AV website navigation.**
-
-We aim to become the preferred AV portal for users worldwide.
-
----
-
-### Live Demo
-**https://zyj888.top**
-
----
-
-## ✨ Vision
-
-To create the **best AV navigation site in the world** — beautiful interface, powerful features, comprehensive resources, and frequently updated.
-
----
-
-## 🤝 Open to Global Contributions
-
-This is an **open source project**. We warmly welcome contributions from everyone!
-
-Whether you want to add new sites, improve the UI/UX, develop new features, or just give suggestions — all reasonable contributions will be seriously considered.
-
-### How to Contribute
-
-- Add new websites (highly recommended)
-- UI/Design improvements
-- New features (search, favorites, tags, themes, etc.)
-- Bug reports and suggestions
-
-Feel free to open Issues or submit Pull Requests.
-
----
-
-## ⚠️ Disclaimer
-
-- This site is **only a navigation index**, no videos or files are hosted.
-- All links point to third-party websites and have no relation to this project.
-- Please comply with local laws and use responsibly.
-- No underage content is allowed.
-
----
-
-## 致谢 / Thanks
+## 致谢
 
 感谢每一位为本项目贡献站点、代码、建议的狼友！
 
 你的每一次 Star、Issue、PR 都是对项目最大的支持 ❤️
 
 **让我们一起把这个导航站打造成为全球最强！**
-
----
-
-**狼友们，冲！冲！冲！**
