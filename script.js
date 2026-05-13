@@ -34,6 +34,14 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById("mainFooter").style.display = "block";
     };
 
+    document.querySelectorAll(".site-card").forEach(function(card) {
+        card.style.cursor = "pointer";
+        card.addEventListener("click", function() {
+            var link = card.querySelector("a");
+            if (link) window.open(link.href, link.target || "_self");
+        });
+    });
+
     document.getElementById("noBtn").onclick = function() {
         alert("您未满18岁，无法访问本页面。");
         window.location.href = "https://www.baidu.com";
