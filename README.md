@@ -2,10 +2,6 @@
 
 **中文** | [English](README/README_EN.md)
 
-![GitHub stars](https://img.shields.io/github/stars/ZYJDDDJB/AV.svg)
-![GitHub Pages](https://img.shields.io/badge/Hosted%20with-GitHub%20Pages-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-
 **致力于打造全球最强大、最好用、最全面的成人视频网站导航站**。
 
 收录全球优质AV站点，持续更新，欢迎全球狼友共同维护与完善。

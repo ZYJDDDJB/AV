@@ -2,10 +2,6 @@
 
 [中文](../README.md) | **English**
 
-![GitHub stars](https://img.shields.io/github/stars/ZYJDDDJB/AV.svg)
-![GitHub Pages](https://img.shields.io/badge/Hosted%20with-GitHub%20Pages-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-
 **Building the most powerful, user-friendly, and comprehensive adult video directory in the world.**
 
 Curating top-tier AV sites from around the globe, constantly updated. Welcome to join and contribute!
