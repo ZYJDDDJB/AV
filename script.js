@@ -46,4 +46,37 @@ document.addEventListener("DOMContentLoaded", function() {
         alert("您未满18岁，无法访问本页面。");
         window.location.href = "https://www.baidu.com";
     };
+
+    // 搜索过滤
+    var searchInput = document.getElementById("searchInput");
+    searchInput.addEventListener("input", function() {
+        var term = searchInput.value.toLowerCase().trim();
+        document.querySelectorAll(".site-card").forEach(function(card) {
+            var text = card.textContent.toLowerCase();
+            card.style.display = text.includes(term) ? "" : "none";
+        });
+        // 隐藏没有匹配结果的分类
+        document.querySelectorAll(".section").forEach(function(section) {
+            var visibleCards = section.querySelectorAll('.site-card[style=""], .site-card:not([style])');
+            var allCards = section.querySelectorAll(".site-card");
+            var hasVisible = false;
+            allCards.forEach(function(c) {
+                if (c.style.display !== "none") hasVisible = true;
+            });
+            section.style.display = hasVisible ? "" : "none";
+        });
+    });
+
+    // 随机推荐
+    document.getElementById("randomBtn").addEventListener("click", function() {
+        var cards = Array.from(document.querySelectorAll(".site-card")).filter(function(card) {
+            return card.style.display !== "none";
+        });
+        if (cards.length > 0) {
+            var random = cards[Math.floor(Math.random() * cards.length)];
+            random.scrollIntoView({ behavior: "smooth" });
+            random.style.transform = "scale(1.08)";
+            setTimeout(function() { random.style.transform = ""; }, 600);
+        }
+    });
 });
