@@ -58,7 +58,7 @@ Whether you want to add new sites, improve the UI, develop features, or share id
 ## Contribution Guide
 
 1. Fork this repository
-2. Add new sites in `index.html` (or modify the code)
+2. modify the code
 3. Submit a Pull Request with a brief description
 4. Wait for review and merge
 
