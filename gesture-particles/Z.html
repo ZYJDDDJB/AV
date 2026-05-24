@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势粒子光感特效</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+SC:wght@300;400;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --bg: #06060f;
+            --fg: #e0e8f0;
+            --muted: #5a6a7a;
+            --accent: #00e5ff;
+            --card: rgba(12, 12, 28, 0.88);
+            --border: rgba(0, 229, 255, 0.18);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Noto Sans SC', sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            cursor: none;
+        }
+
+        #particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* 手势指示器 */
+        .gesture-indicator {
+            top: 28px;
+            left: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            opacity: 0;
+            transition: opacity 0.6s ease;
+        }
+
+        .gesture-indicator.visible {
+            opacity: 1;
+        }
+
+        .gesture-label {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .gesture-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 38px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            transition: color 0.4s, text-shadow 0.4s;
+            color: var(--accent);
+            text-shadow: 0 0 30px var(--accent);
+        }
+
+        .gesture-sub {
+            font-size: 13px;
+            color: var(--muted);
+            font-weight: 300;
+            max-width: 200px;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        /* 摄像头窗口 */
+        .camera-window {
+            bottom: 28px;
+            right: 28px;
+            width: 220px;
+            height: 165px;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1.5px solid var(--border);
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
+            transition: border-color 0.5s, box-shadow 0.5s;
+            opacity: 0;
+        }
+
+        .camera-window.visible {
+            opacity: 1;
+        }
+
+        .camera-window video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            display: block;
+        }
+
+        #cameraOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
+
+        /* 底部提示 */
+        .hint-bar {
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            padding: 10px 24px;
+            background: var(--card);
+            border-radius: 40px;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            opacity: 0;
+            transition: opacity 0.6s;
+        }
+
+        .hint-bar.visible {
+            opacity: 1;
+        }
+
+        .hint-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .hint-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        /* 统计 */
+        .stats-box {
+            top: 28px;
+            right: 28px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            color: var(--muted);
+            text-align: right;
+            letter-spacing: 1px;
+            opacity: 0;
+            transition: opacity 0.6s;
+        }
+
+        .stats-box.visible {
+            opacity: 1;
+        }
+
+        /* 启动遮罩 */
+        .start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            background: rgba(6, 6, 15, 0.88);
+            backdrop-filter: blur(30px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+            transition: opacity 0.8s ease, visibility 0.8s;
+        }
+
+        .start-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .start-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: clamp(28px, 5vw, 52px);
+            font-weight: 900;
+            letter-spacing: 6px;
+            background: linear-gradient(135deg, #00e5ff 0%, #ff0066 50%, #ff9500 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: titleShimmer 4s ease-in-out infinite;
+            background-size: 200% 200%;
+        }
+
+        @keyframes titleShimmer {
+
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        .start-sub {
+            font-size: 15px;
+            color: var(--muted);
+            max-width: 420px;
+            text-align: center;
+            line-height: 1.9;
+        }
+
+        .start-btn {
+            pointer-events: all;
+            padding: 14px 44px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: var(--bg);
+            background: var(--accent);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 30px rgba(0, 229, 255, 0.35);
+        }
+
+        .start-btn:hover {
+            transform: scale(1.06);
+            box-shadow: 0 0 50px rgba(0, 229, 255, 0.55);
+        }
+
+        .start-btn:active {
+            transform: scale(0.97);
+        }
+
+        .loading-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 13px;
+            color: var(--accent);
+            animation: loadPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loadPulse {
+
+            0%,
+            100% {
+                opacity: 0.35;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .error-text {
+            font-size: 13px;
+            color: #ff0066;
+            max-width: 360px;
+            text-align: center;
+        }
+
+        /* 自定义光标 */
+        .cursor-dot {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 16px var(--accent);
+            pointer-events: none;
+            z-index: 200;
+            transform: translate(-50%, -50%);
+            transition: background 0.3s, box-shadow 0.3s;
+            opacity: 0;
+        }
+
+        .cursor-dot.visible {
+            opacity: 1;
+        }
+
+        @media (max-width: 700px) {
+            .hint-bar {
+                gap: 10px;
+                padding: 8px 14px;
+            }
+
+            .hint-item {
+                font-size: 10px;
+            }
+
+            .camera-window {
+                width: 150px;
+                height: 112px;
+            }
+
+            .gesture-name {
+                font-size: 26px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- 自定义光标 -->
+    <div class="cursor-dot" id="cursorDot"></div>
+
+    <!-- 启动遮罩 -->
+    <div class="start-overlay" id="startOverlay">
+        <div class="start-title">GESTURE FLUX</div>
+        <div class="start-sub">
+            通过摄像头捕捉手部动作，粒子将实时响应你的手势。<br>
+            张开手掌、握拳、指向、比V — 每个动作都有独特的粒子反应。
+        </div>
+        <button class="start-btn" id="startBtn">启动摄像头</button>
+        <div class="loading-text" id="loadingText" style="display:none;">正在初始化手部识别...</div>
+        <div class="error-text" id="errorText" style="display:none;"></div>
+    </div>
+
+    <!-- 手势状态 -->
+    <div class="ui-overlay gesture-indicator" id="gestureIndicator">
+        <div class="gesture-label">CURRENT GESTURE</div>
+        <div class="gesture-name" id="gestureName">STANDBY</div>
+        <div class="gesture-sub" id="gestureSub">等待手部进入画面</div>
+    </div>
+
+    <!-- 统计 -->
+    <div class="ui-overlay stats-box" id="statsBox">
+        <div id="particleCount">PARTICLES 500</div>
+        <div id="fpsCount">FPS --</div>
+    </div>
+
+    <!-- 摄像头小窗 -->
+    <div class="ui-overlay camera-window" id="cameraWindow">
+        <video id="videoInput" autoplay playsinline></video>
+        <canvas id="cameraOverlay"></canvas>
+    </div>
+
+    <!-- 底部提示 -->
+    <div class="ui-overlay hint-bar" id="hintBar">
+        <div class="hint-item">
+            <div class="hint-dot" style="background:#ff9500;box-shadow:0 0 6px #ff9500;"></div>
+            <span>张开 — 扩散</span>
+        </div>
+        <div class="hint-item">
+            <div class="hint-dot" style="background:#ff0066;box-shadow:0 0 6px #ff0066;"></div>
+            <span>握拳 — 收缩</span>
+        </div>
+        <div class="hint-item">
+            <div class="hint-dot" style="background:#00ff88;box-shadow:0 0 6px #00ff88;"></div>
+            <span>指向 — 旋涡</span>
+        </div>
+        <div class="hint-item">
+            <div class="hint-dot" style="background:#4488ff;box-shadow:0 0 6px #4488ff;"></div>
+            <span>比V — 分裂</span>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            /* ========== 全局变量 ========== */
+            const canvas = document.getElementById('particleCanvas');
+            const ctx = canvas.getContext('2d');
+            const cursorDot = document.getElementById('cursorDot');
+            const overlayCanvas = document.getElementById('cameraOverlay');
+            const overlayCtx = overlayCanvas.getContext('2d');
+
+            let W, H;
+            const PARTICLE_NUM = 500;
+            let particles = [];
+
+            // 手部与手势状态
+            let handData = null;
+            let currentGesture = 'IDLE';
+            let prevGesture = 'IDLE';
+            let cameraStarted = false;
+
+            // 鼠标位置（备用交互）
+            let mouseX = -9999, mouseY = -9999;
+            let mouseActive = false;
+
+            // 冲击波
+            let shockwaves = [];
+
+            // FPS
+            let frameCount = 0, lastFpsTime = performance.now(), fps = 0;
+
+            // 各手势配色
+            const COLORS = {
+                IDLE: { r: 0, g: 229, b: 255 },
+                OPEN: { r: 255, g: 149, b: 0 },
+                FIST: { r: 255, g: 0, b: 102 },
+                POINT: { r: 0, g: 255, b: 136 },
+                PEACE: { r: 68, g: 136, b: 255 }
+            };
+
+            // 手势中文描述
+            const GESTURE_INFO = {
+                IDLE: { name: 'STANDBY', sub: '等待手部进入画面' },
+                OPEN: { name: 'DISPERSE', sub: '粒子从掌心向外扩散' },
+                FIST: { name: 'CONTRACT', sub: '粒子向掌心强力收缩' },
+                POINT: { name: 'VORTEX', sub: '粒子围绕指尖旋转' },
+                PEACE: { name: 'SPLIT', sub: '粒子分裂为两股旋流' }
+            };
+
+            /* ========== Canvas 尺寸 ========== */
+            function resize() {
+                W = canvas.width = window.innerWidth;
+                H = canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            /* ========== 鼠标交互 ========== */
+            document.addEventListener('mousemove', e => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                mouseActive = true;
+                cursorDot.style.left = mouseX + 'px';
+                cursorDot.style.top = mouseY + 'px';
+                if (!cursorDot.classList.contains('visible')) cursorDot.classList.add('visible');
+            });
+            document.addEventListener('mouseleave', () => {
+                mouseActive = false;
+                cursorDot.classList.remove('visible');
+            });
+
+            /* ========== 冲击波 ========== */
+            function addShockwave(x, y, color) {
+                shockwaves.push({ x, y, radius: 5, maxR: 350, alpha: 0.7, color });
+            }
+            function updateAndDrawShockwaves() {
+                shockwaves = shockwaves.filter(s => s.alpha > 0.01);
+                shockwaves.forEach(s => {
+                    s.radius += 6;
+                    s.alpha *= 0.94;
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(${s.color.r},${s.color.g},${s.color.b},${s.alpha})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+            }
+
+            /* ========== 背景光斑 ========== */
+            const ambientBlobs = [
+                { x: 0.25, y: 0.3, size: 350, sx: 0.0007, sy: 0.0009, ax: 120, ay: 90, ph: 0 },
+                { x: 0.75, y: 0.65, size: 280, sx: 0.001, sy: 0.0006, ax: 100, ay: 110, ph: 2 },
+                { x: 0.5, y: 0.45, size: 400, sx: 0.0005, sy: 0.0008, ax: 80, ay: 70, ph: 4 }
+            ];
+            function drawAmbientBlobs(time) {
+                const c = COLORS[currentGesture] || COLORS.IDLE;
+                ambientBlobs.forEach(b => {
+                    const bx = b.x * W + Math.sin(time * b.sx + b.ph) * b.ax;
+                    const by = b.y * H + Math.cos(time * b.sy + b.ph) * b.ay;
+                    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, b.size);
+                    grad.addColorStop(0, `rgba(${c.r},${c.g},${c.b},0.035)`);
+                    grad.addColorStop(1, `rgba(${c.r},${c.g},${c.b},0)`);
+                    ctx.beginPath();
+                    ctx.arc(bx, by, b.size, 0, Math.PI * 2);
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                });
+            }
+
+            /* ========== 粒子类 ========== */
+            class Particle {
+                constructor() {
+                    this.x = Math.random() * W;
+                    this.y = Math.random() * H;
+                    this.vx = (Math.random() - 0.5) * 1.2;
+                    this.vy = (Math.random() - 0.5) * 1.2;
+                    this.baseSize = Math.random() * 2.2 + 0.6;
+                    this.size = this.baseSize;
+                    this.alpha = Math.random() * 0.55 + 0.35;
+                    this.r = COLORS.IDLE.r;
+                    this.g = COLORS.IDLE.g;
+                    this.b = COLORS.IDLE.b;
+                    this.group = Math.random() < 0.5 ? 0 : 1; // 用于V字分裂
+                }
+
+                update(handPos, gesture, time) {
+                    // 目标颜色
+                    const tc = COLORS[gesture] || COLORS.IDLE;
+                    this.r += (tc.r - this.r) * 0.045;
+                    this.g += (tc.g - this.g) * 0.045;
+                    this.b += (tc.b - this.b) * 0.045;
+
+                    // 呼吸效果（IDLE时粒子聚散）
+                    if (!handPos && gesture === 'IDLE') {
+                        const cx = W / 2, cy = H / 2;
+                        const breath = Math.sin(time * 0.4) * 0.08;
+                        this.vx += (this.x - cx) * breath * 0.00012;
+                        this.vy += (this.y - cy) * breath * 0.00012;
+                        this.vx += (Math.random() - 0.5) * 0.15;
+                        this.vy += (Math.random() - 0.5) * 0.15;
+                        this.size += (this.baseSize - this.size) * 0.04;
+                    }
+
+                    // 鼠标轻微排斥（无手部时）
+                    if (!handPos && mouseActive) {
+                        const mdx = this.x - mouseX;
+                        const mdy = this.y - mouseY;
+                        const md = Math.sqrt(mdx * mdx + mdy * mdy) || 1;
+                        if (md < 180) {
+                            const mf = (180 - md) / 180 * 0.8;
+                            this.vx += (mdx / md) * mf;
+                            this.vy += (mdy / md) * mf;
+                        }
+                    }
+
+                    // 手势驱动力
+                    if (handPos) {
+                        const dx = this.x - handPos.x;
+                        const dy = this.y - handPos.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                        const angle = Math.atan2(dy, dx);
+
+                        switch (gesture) {
+                            case 'OPEN': {
+                                // 扩散：从掌心向外推
+                                const force = Math.max(0, 350 - dist) / 350;
+                                this.vx += Math.cos(angle) * force * 3.5;
+                                this.vy += Math.sin(angle) * force * 3.5;
+                                this.size = this.baseSize * (1 + force * 2.5);
+                                break;
+                            }
+                            case 'FIST': {
+                                // 收缩：向掌心吸引
+                                const force = Math.min(1, 500 / (dist + 10));
+                                this.vx -= (dx / dist) * force * 5;
+                                this.vy -= (dy / dist) * force * 5;
+                                this.size = this.baseSize * (0.4 + force * 0.6);
+                                // 到达中心附近时绕转
+                                if (dist < 60) {
+                                    this.vx += (-dy / dist) * 1.5;
+                                    this.vy += (dx / dist) * 1.5;
+                                }
+                                break;
+                            }
+                            case 'POINT': {
+                                // 旋涡：围绕食指尖
+                                if (handPos.fingerTip) {
+                                    const fx = this.x - handPos.fingerTip.x;
+                                    const fy = this.y - handPos.fingerTip.y;
+                                    const fd = Math.sqrt(fx * fx + fy * fy) || 1;
+                                    const tangX = -fy / fd;
+                                    const tangY = fx / fd;
+                                    const force = Math.max(0, 280 - fd) / 280;
+                                    this.vx += tangX * force * 5;
+                                    this.vy += tangY * force * 5;
+                                    this.vx -= fx * 0.004;
+                                    this.vy -= fy * 0.004;
+                                    this.size = this.baseSize * (1 + force * 1.2);
+                                }
+                                break;
+                            }
+                            case 'PEACE': {
+                                // 分裂：两个指尖各自吸引
+                                if (handPos.fingerTip && handPos.fingerTip2) {
+                                    const t = this.group === 0 ? handPos.fingerTip : handPos.fingerTip2;
+                                    const fx = this.x - t.x;
+                                    const fy = this.y - t.y;
+                                    const fd = Math.sqrt(fx * fx + fy * fy) || 1;
+                                    const tangX = -fy / fd;
+                                    const tangY = fx / fd;
+                                    const force = Math.max(0, 220 - fd) / 220;
+                                    this.vx += tangX * force * 3.5;
+                                    this.vy += tangY * force * 3.5;
+                                    this.vx -= fx * 0.006;
+                                    this.vy -= fy * 0.006;
+                                    this.size = this.baseSize * (1 + force * 0.8);
+                                }
+                                break;
+                            }
+                            default: {
+                                // 轻微吸引
+                                if (dist < 250) {
+                                    const force = (250 - dist) / 250 * 0.4;
+                                    this.vx -= (dx / dist) * force;
+                                    this.vy -= (dy / dist) * force;
+                                }
+                            }
+                        }
+                    }
+
+                    // 阻尼
+                    this.vx *= 0.955;
+                    this.vy *= 0.955;
+
+                    // 位置更新
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // 软边界
+                    const m = 60;
+                    if (this.x < -m) this.x = W + m;
+                    if (this.x > W + m) this.x = -m;
+                    if (this.y < -m) this.y = H + m;
+                    if (this.y > H + m) this.y = -m;
+
+                    // 大小回弹
+                    this.size += (this.baseSize - this.size) * 0.025;
+                }
+
+                draw() {
+                    const r = Math.round(this.r);
+                    const g = Math.round(this.g);
+                    const b = Math.round(this.b);
+                    const s = Math.max(0.3, this.size);
+
+                    // 外层光晕
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, s * 5, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${r},${g},${b},${this.alpha * 0.04})`;
+                    ctx.fill();
+
+                    // 中层发光
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, s * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${r},${g},${b},${this.alpha * 0.18})`;
+                    ctx.fill();
+
+                    // 核心
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${Math.min(255, r + 80)},${Math.min(255, g + 80)},${Math.min(255, b + 80)},${this.alpha * 0.85})`;
+                    ctx.fill();
+                }
+            }
+
+            /* ========== 初始化粒子 ========== */
+            function initParticles() {
+                particles = [];
+                for (let i = 0; i < PARTICLE_NUM; i++) {
+                    particles.push(new Particle());
+                }
+            }
+
+            /* ========== 手势检测 ========== */
+            function detectGesture(lm) {
+                // 判断手指伸展：指尖到手腕距离 > 指根到手腕距离
+                const wrist = lm[0];
+                function ext(tip, pip) {
+                    const td = Math.hypot(lm[tip].x - wrist.x, lm[tip].y - wrist.y);
+                    const pd = Math.hypot(lm[pip].x - wrist.x, lm[pip].y - wrist.y);
+                    return td > pd * 1.1;
+                }
+                const indexOpen = ext(8, 6);
+                const middleOpen = ext(12, 10);
+                const ringOpen = ext(16, 14);
+                const pinkyOpen = ext(20, 18);
+                const thumbOpen = ext(4, 2);
+
+                const count = [indexOpen, middleOpen, ringOpen, pinkyOpen].filter(Boolean).length;
+
+                if (count >= 3) return 'OPEN';
+                if (count === 0 && !thumbOpen) return 'FIST';
+                if (indexOpen && !middleOpen && !ringOpen && !pinkyOpen) return 'POINT';
+                if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) return 'PEACE';
+                return 'IDLE';
+            }
+
+            /* ========== 手部数据处理 ========== */
+            function processHandResults(results) {
+                // 更新overlay尺寸
+                if (overlayCanvas.width !== 220) {
+                    overlayCanvas.width = 220;
+                    overlayCanvas.height = 165;
+                }
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const lm = results.multiHandLandmarks[0];
+
+                    // 镜像映射到粒子canvas坐标
+                    const mirrored = lm.map(p => ({
+                        x: (1 - p.x) * W,
+                        y: p.y * H,
+                        z: p.z
+                    }));
+
+                    // 掌心中心
+                    const palmCenter = {
+                        x: (mirrored[0].x + mirrored[5].x + mirrored[17].x) / 3,
+                        y: (mirrored[0].y + mirrored[5].y + mirrored[17].y) / 3
+                    };
+
+                    const fingerTip = { x: mirrored[8].x, y: mirrored[8].y };
+                    const fingerTip2 = { x: mirrored[12].x, y: mirrored[12].y };
+
+                    const gesture = detectGesture(lm);
+
+                    // 手势切换时产生冲击波
+                    if (gesture !== prevGesture && gesture !== 'IDLE' && prevGesture !== 'IDLE') {
+                        addShockwave(palmCenter.x, palmCenter.y, COLORS[gesture] || COLORS.IDLE);
+                    }
+                    prevGesture = currentGesture;
+                    currentGesture = gesture;
+
+                    handData = { palmCenter, fingerTip, fingerTip2, gesture, landmarks: mirrored };
+
+                    // 在摄像头overlay上绘制骨架
+                    drawHandOverlay(lm);
+
+                    updateGestureUI(gesture);
+                } else {
+                    handData = null;
+                    if (currentGesture !== 'IDLE') prevGesture = currentGesture;
+                    currentGesture = 'IDLE';
+                    updateGestureUI('IDLE');
+                }
+            }
+
+            /* ========== 在摄像头overlay上绘制手部骨架 ========== */
+            function drawHandOverlay(lm) {
+                const ow = overlayCanvas.width;
+                const oh = overlayCanvas.height;
+                const c = COLORS[currentGesture] || COLORS.IDLE;
+
+                const conns = [
+                    [0, 1], [1, 2], [2, 3], [3, 4],
+                    [0, 5], [5, 6], [6, 7], [7, 8],
+                    [5, 9], [9, 10], [10, 11], [11, 12],
+                    [9, 13], [13, 14], [14, 15], [15, 16],
+                    [13, 17], [17, 18], [18, 19], [19, 20],
+                    [0, 17]
+                ];
+
+                overlayCtx.lineWidth = 1.5;
+                overlayCtx.strokeStyle = `rgba(${c.r},${c.g},${c.b},0.6)`;
+                conns.forEach(([a, b]) => {
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(lm[a].x * ow, lm[a].y * oh);
+                    overlayCtx.lineTo(lm[b].x * ow, lm[b].y * oh);
+                    overlayCtx.stroke();
+                });
+
+                lm.forEach(p => {
+                    overlayCtx.beginPath();
+                    overlayCtx.arc(p.x * ow, p.y * oh, 2.5, 0, Math.PI * 2);
+                    overlayCtx.fillStyle = `rgba(${c.r},${c.g},${c.b},0.9)`;
+                    overlayCtx.fill();
+                });
+            }
+
+            /* ========== UI 更新 ========== */
+            function updateGestureUI(gesture) {
+                const info = GESTURE_INFO[gesture] || GESTURE_INFO.IDLE;
+                const color = COLORS[gesture] || COLORS.IDLE;
+                const hex = `rgb(${color.r},${color.g},${color.b})`;
+
+                document.getElementById('gestureName').textContent = info.name;
+                document.getElementById('gestureName').style.color = hex;
+                document.getElementById('gestureName').style.textShadow = `0 0 30px ${hex}`;
+                document.getElementById('gestureSub').textContent = info.sub;
+
+                // 摄像头窗口边框
+                const camWin = document.getElementById('cameraWindow');
+                camWin.style.borderColor = `rgba(${color.r},${color.g},${color.b},0.3)`;
+                camWin.style.boxShadow = `0 0 40px rgba(${color.r},${color.g},${color.b},0.12)`;
+
+                // 光标颜色
+                cursorDot.style.background = hex;
+                cursorDot.style.boxShadow = `0 0 16px ${hex}`;
+            }
+
+            /* ========== 绘制手部光晕 ========== */
+            function drawHandGlow() {
+                if (!handData) return;
+                const c = COLORS[currentGesture] || COLORS.IDLE;
+                const center = handData.palmCenter;
+
+                // 掌心光晕
+                const glowR = currentGesture === 'FIST' ? 90 : currentGesture === 'OPEN' ? 250 : 140;
+                const grad = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, glowR);
+                grad.addColorStop(0, `rgba(${c.r},${c.g},${c.b},0.25)`);
+                grad.addColorStop(0.4, `rgba(${c.r},${c.g},${c.b},0.08)`);
+                grad.addColorStop(1, `rgba(${c.r},${c.g},${c.b},0)`);
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, glowR, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // 指尖光点
+                const tips = [4, 8, 12, 16, 20];
+                tips.forEach(i => {
+                    const t = handData.landmarks[i];
+                    const tg = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, 22);
+                    tg.addColorStop(0, `rgba(${c.r},${c.g},${c.b},0.55)`);
+                    tg.addColorStop(1, `rgba(${c.r},${c.g},${c.b},0)`);
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, 22, 0, Math.PI * 2);
+                    ctx.fillStyle = tg;
+                    ctx.fill();
+                });
+            }
+
+            /* ========== 粒子连线（仅手部附近） ========== */
+            function drawConnections() {
+                if (!handData) return;
+                const c = COLORS[currentGesture] || COLORS.IDLE;
+                const hx = handData.palmCenter.x;
+                const hy = handData.palmCenter.y;
+                const range = 280;
+
+                // 筛选手部附近粒子
+                const nearby = [];
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    const d = Math.abs(p.x - hx) + Math.abs(p.y - hy); // 曼哈顿距离
+                    if (d < range * 1.5) nearby.push(p);
+                    if (nearby.length > 80) break; // 限制数量
+                }
+
+                const maxDist = 90;
+                for (let i = 0; i < nearby.length; i++) {
+                    for (let j = i + 1; j < nearby.length; j++) {
+                        const dx = nearby[i].x - nearby[j].x;
+                        const dy = nearby[i].y - nearby[j].y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < maxDist) {
+                            const alpha = (1 - dist / maxDist) * 0.12;
+                            ctx.beginPath();
+                            ctx.moveTo(nearby[i].x, nearby[i].y);
+                            ctx.lineTo(nearby[j].x, nearby[j].y);
+                            ctx.strokeStyle = `rgba(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)},${alpha})`;
+                            ctx.lineWidth = 0.6;
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            /* ========== 主动画循环 ========== */
+            function animate() {
+                requestAnimationFrame(animate);
+                const time = performance.now() * 0.001;
+
+                // FPS
+                frameCount++;
+                if (time * 1000 - lastFpsTime >= 1000) {
+                    fps = frameCount;
+                    frameCount = 0;
+                    lastFpsTime = time * 1000;
+                    document.getElementById('fpsCount').textContent = `FPS ${fps}`;
+                }
+
+                // 拖尾清除
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.fillStyle = 'rgba(6,6,15,0.14)';
+                ctx.fillRect(0, 0, W, H);
+
+                // 切换叠加模式
+                ctx.globalCompositeOperation = 'lighter';
+
+                // 背景光斑
+                drawAmbientBlobs(time);
+
+                // 手部光晕
+                drawHandGlow();
+
+                // 粒子连线
+                drawConnections();
+
+                // 冲击波
+                updateAndDrawShockwaves();
+
+                // 构建手部位置对象
+                const handPos = handData ? {
+                    x: handData.palmCenter.x,
+                    y: handData.palmCenter.y,
+                    fingerTip: handData.fingerTip,
+                    fingerTip2: handData.fingerTip2
+                } : null;
+
+                // 更新与绘制粒子
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].update(handPos, currentGesture, time);
+                    particles[i].draw();
+                }
+
+                // 恢复混合模式
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            /* ========== MediaPipe 初始化 ========== */
+            async function initMediaPipe() {
+                const hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.5
+                });
+
+                hands.onResults(processHandResults);
+
+                const videoEl = document.getElementById('videoInput');
+                const camera = new Camera(videoEl, {
+                    onFrame: async () => {
+                        await hands.send({ image: videoEl });
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                await camera.start();
+                cameraStarted = true;
+            }
+
+            /* ========== 启动按钮逻辑 ========== */
+            document.getElementById('startBtn').addEventListener('click', async () => {
+                const btn = document.getElementById('startBtn');
+                const loadingText = document.getElementById('loadingText');
+                const errorText = document.getElementById('errorText');
+
+                btn.style.display = 'none';
+                loadingText.style.display = 'block';
+                errorText.style.display = 'none';
+
+                try {
+                    await initMediaPipe();
+
+                    // 隐藏启动遮罩
+                    document.getElementById('startOverlay').classList.add('hidden');
+
+                    // 显示UI
+                    document.getElementById('gestureIndicator').classList.add('visible');
+                    document.getElementById('cameraWindow').classList.add('visible');
+                    document.getElementById('hintBar').classList.add('visible');
+                    document.getElementById('statsBox').classList.add('visible');
+
+                } catch (err) {
+                    console.error('摄像头启动失败:', err);
+                    loadingText.style.display = 'none';
+                    errorText.style.display = 'block';
+                    errorText.textContent = '摄像头启动失败，请确认已允许摄像头权限并刷新重试。错误: ' + err.message;
+                    btn.style.display = 'inline-block';
+                    btn.textContent = '重试';
+                }
+            });
+
+            /* ========== 初始化 ========== */
+            initParticles();
+            animate();
+
+        })();
+    </script>
+</body>
+
+</html>

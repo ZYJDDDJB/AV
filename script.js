@@ -43,8 +43,8 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.getElementById("noBtn").onclick = function() {
-        alert("您未满18岁，无法访问本页面。");
-        window.location.href = "https://www.baidu.com";
+        var pages = ["gesture-particles/D.html", "gesture-particles/G.html", "gesture-particles/Z.html"];
+        window.location.href = pages[Math.floor(Math.random() * pages.length)];
     };
 
     // 搜索过滤

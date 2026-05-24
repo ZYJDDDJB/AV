@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势交互 - 粒子光感特效</title>
+    <style>
+        :root {
+            --bg: #050510;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            overflow: hidden;
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            height: 100vh;
+            width: 100vw;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        #particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* 摄像头预览小窗 */
+        #videoPreview {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 160px;
+            height: 120px;
+            border-radius: 16px;
+            border: 2px solid rgba(255, 180, 60, 0.5);
+            z-index: 10;
+            object-fit: cover;
+            transform: scaleX(-1);
+            box-shadow: 0 0 30px rgba(255, 150, 30, 0.3), 0 8px 24px rgba(0, 0, 0, 0.5);
+            transition: all 0.4s ease;
+            background: #000;
+            opacity: 0.85;
+        }
+
+        #videoPreview:hover {
+            opacity: 1;
+            border-color: rgba(255, 200, 100, 0.9);
+            box-shadow: 0 0 50px rgba(255, 160, 40, 0.5), 0 12px 32px rgba(0, 0, 0, 0.6);
+            transform: scaleX(-1) scale(1.05);
+        }
+
+        /* 状态提示 */
+        #statusOverlay {
+            position: fixed;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        #gestureLabel {
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            color: #ffb74d;
+            text-shadow: 0 0 30px rgba(255, 160, 40, 0.7), 0 0 80px rgba(255, 140, 20, 0.4);
+            transition: all 0.35s ease;
+            padding: 10px 28px;
+            border-radius: 40px;
+            background: rgba(20, 15, 30, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 170, 60, 0.25);
+        }
+
+        #gestureSub {
+            font-size: 0.85rem;
+            color: rgba(255, 200, 140, 0.7);
+            letter-spacing: 0.04em;
+            text-shadow: 0 0 15px rgba(255, 150, 50, 0.4);
+            transition: all 0.35s ease;
+        }
+
+        #loadingHint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 30;
+            color: #ffb74d;
+            font-size: 1.1rem;
+            letter-spacing: 0.05em;
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+            text-shadow: 0 0 40px rgba(255, 160, 40, 0.6);
+        }
+
+        #loadingHint .dot-pulse {
+            display: inline-block;
+            animation: dotPulse 1.4s infinite;
+        }
+
+        #loadingHint .dot-pulse:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        #loadingHint .dot-pulse:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes dotPulse {
+
+            0%,
+            80%,
+            100% {
+                opacity: 0.3;
+                transform: translateY(0);
+            }
+
+            40% {
+                opacity: 1;
+                transform: translateY(-6px);
+            }
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            #videoPreview {
+                width: 100px;
+                height: 75px;
+                bottom: 20px;
+                right: 16px;
+                border-radius: 12px;
+            }
+
+            #gestureLabel {
+                font-size: 1.1rem;
+                padding: 8px 20px;
+            }
+
+            #gestureSub {
+                font-size: 0.7rem;
+            }
+
+            #statusOverlay {
+                top: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            #videoPreview {
+                width: 72px;
+                height: 54px;
+                bottom: 14px;
+                right: 10px;
+                border-radius: 10px;
+                border-width: 1.5px;
+            }
+
+            #gestureLabel {
+                font-size: 0.95rem;
+                padding: 6px 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="particleCanvas"></canvas>
+    <video id="videoPreview" autoplay playsinline muted></video>
+
+    <div id="statusOverlay">
+        <div id="gestureLabel">🌟 等待手势</div>
+        <div id="gestureSub">将手放入摄像头视野</div>
+    </div>
+    <div id="loadingHint">
+        初始化手势识别<span class="dot-pulse">.</span><span class="dot-pulse">.</span><span class="dot-pulse">.</span>
+    </div>
+
+    <!-- MediaPipe Hands CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js"
+        crossorigin="anonymous">
+        </script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous">
+    </script>
+
+    <script>
+        (function () {
+            // ==================== DOM元素 ====================
+            const canvas = document.getElementById('particleCanvas');
+            const ctx = canvas.getContext('2d');
+            const videoPreview = document.getElementById('videoPreview');
+            const gestureLabel = document.getElementById('gestureLabel');
+            const gestureSub = document.getElementById('gestureSub');
+            const loadingHint = document.getElementById('loadingHint');
+
+            // ==================== 配置 ====================
+            const CONFIG = {
+                maxParticles: 450,
+                particlesPerFrame: {
+                    free: 1,
+                    expand: 6,
+                    contract: 10,
+                    beam: 4,
+                    split: 5,
+                    rise: 7,
+                    burst: 35,
+                },
+                particleLife: { min: 40, max: 140 }, // 帧数
+                trailAlpha: 0.08, // 拖尾透明度 (越小拖尾越长)
+                gestureDebounceFrames: 6, // 手势防抖帧数
+                handLostFrames: 25, // 手丢失后保持状态的帧数
+                fingerStraightThreshold: 1.18, // 手指伸直判断阈值
+                thumbStraightThreshold: 1.25,
+                glowCoreBaseRadius: 40,
+                glowCoreMaxRadius: 90,
+                particleSizeRange: { min: 1.5, max: 9 },
+                beamSpeedMultiplier: 2.5,
+                colors: {
+                    gold: [255, 185, 50],
+                    warmOrange: [255, 140, 30],
+                    white: [255, 245, 230],
+                    amber: [255, 170, 60],
+                    roseGold: [255, 160, 100],
+                    softPink: [255, 180, 140],
+                    paleGold: [255, 210, 130],
+                },
+            };
+
+            // ==================== 状态 ====================
+            let canvasWidth, canvasHeight;
+            let particles = [];
+            let handData = null; // 当前手部数据
+            let currentGesture = 'free'; // free | expand | contract | beam | split | rise
+            let previousGesture = 'free';
+            let gestureCandidate = 'free';
+            let gestureCandidateCount = 0;
+            let handLostCounter = 0;
+            let isMediaPipeReady = false;
+            let hasHandBeenDetected = false;
+            let gestureJustChanged = false;
+            let burstParticlesRemaining = 0;
+
+            // 平滑的手部位置
+            let smoothHandX = null;
+            let smoothHandY = null;
+            let smoothHandRadius = 60;
+            const smoothingFactor = 0.25;
+
+            // ==================== 粒子纹理预渲染 ====================
+            const spriteCanvases = {};
+            const spriteSizes = [4, 7, 11, 18, 26];
+
+            function createSpriteTexture(radius) {
+                const size = radius * 2 + 4;
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = size;
+                offCanvas.height = size;
+                const offCtx = offCanvas.getContext('2d');
+                const cx = size / 2;
+                const cy = size / 2;
+
+                const gradient = offCtx.createRadialGradient(cx, cy, radius * 0.05, cx, cy, radius);
+                gradient.addColorStop(0, 'rgba(255,255,250,1)');
+                gradient.addColorStop(0.15, 'rgba(255,220,150,0.95)');
+                gradient.addColorStop(0.35, 'rgba(255,170,60,0.7)');
+                gradient.addColorStop(0.6, 'rgba(255,130,30,0.25)');
+                gradient.addColorStop(0.85, 'rgba(255,100,20,0.04)');
+                gradient.addColorStop(1, 'rgba(255,80,10,0)');
+                offCtx.fillStyle = gradient;
+                offCtx.beginPath();
+                offCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+                offCtx.fill();
+
+                return offCanvas;
+            }
+
+            spriteSizes.forEach(s => {
+                spriteCanvases[s] = createSpriteTexture(s);
+            });
+
+            function getSpriteForSize(particleSize) {
+                let best = spriteSizes[0];
+                for (const s of spriteSizes) {
+                    if (s >= particleSize) { best = s; break; }
+                    best = s;
+                }
+                return spriteCanvases[best];
+            }
+
+            // ==================== 粒子类 ====================
+            class Particle {
+                constructor(x, y, vx, vy, life, size, colorTuple) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = vx;
+                    this.vy = vy;
+                    this.life = life;
+                    this.maxLife = life;
+                    this.size = size;
+                    this.baseSize = size;
+                    this.color = colorTuple; // [r, g, b]
+                    this.alpha = 1;
+                    this.friction = 0.985 + Math.random() * 0.01;
+                    this.pulsePhase = Math.random() * Math.PI * 2;
+                    this.pulseSpeed = 0.03 + Math.random() * 0.06;
+                }
+
+                update() {
+                    this.life--;
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.vx *= this.friction;
+                    this.vy *= this.friction;
+
+                    // 生命周期脉动
+                    const lifeRatio = this.life / this.maxLife;
+                    this.alpha = lifeRatio < 0.2 ? lifeRatio / 0.2 : (lifeRatio > 0.7 ? (1 - lifeRatio) / 0.3 : 1);
+                    const pulse = 1 + Math.sin(this.pulsePhase + (1 - lifeRatio) * Math.PI * 2) * 0.35;
+                    this.size = this.baseSize * pulse * (0.6 + 0.4 * Math.min(1, lifeRatio * 1.8));
+                    this.pulsePhase += this.pulseSpeed;
+
+                    // 边界衰减
+                    const margin = 60;
+                    if (this.x < -margin || this.x > canvasWidth + margin ||
+                        this.y < -margin || this.y > canvasHeight + margin) {
+                        this.life = Math.min(this.life, 8);
+                    }
+                }
+
+                isAlive() {
+                    return this.life > 0 && this.alpha > 0.01;
+                }
+
+                draw(ctx) {
+                    if (this.size < 0.3 || this.alpha < 0.02) return;
+                    const sprite = getSpriteForSize(this.size);
+                    const drawSize = this.size * 2.4;
+                    const alpha = Math.min(1, this.alpha);
+                    ctx.globalAlpha = alpha;
+                    ctx.drawImage(
+                        sprite,
+                        this.x - drawSize / 2,
+                        this.y - drawSize / 2,
+                        drawSize,
+                        drawSize
+                    );
+                    ctx.globalAlpha = 1;
+                }
+            }
+
+            // ==================== 粒子系统 ====================
+            function spawnParticle(x, y, vx, vy, life, size, color) {
+                if (particles.length >= CONFIG.maxParticles) {
+                    // 移除最老的粒子
+                    particles.shift();
+                }
+                particles.push(new Particle(x, y, vx, vy, life, size, color));
+            }
+
+            function spawnParticlesAt(x, y, count, mode) {
+                const cfg = CONFIG;
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    let speed, size, life, colorChoice;
+                    let vx, vy;
+
+                    switch (mode) {
+                        case 'expand':
+                            speed = 1.5 + Math.random() * 4.5;
+                            vx = Math.cos(angle) * speed;
+                            vy = Math.sin(angle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 5;
+                            life = cfg.particleLife.min + Math.random() * (cfg.particleLife.max - cfg.particleLife.min);
+                            colorChoice = Math.random() < 0.5 ? cfg.colors.gold : cfg.colors.warmOrange;
+                            break;
+                        case 'contract':
+                            speed = 0.3 + Math.random() * 1.8;
+                            vx = Math.cos(angle) * speed;
+                            vy = Math.sin(angle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 2.5;
+                            life = cfg.particleLife.min * 0.6 + Math.random() * cfg.particleLife.max * 0.5;
+                            colorChoice = Math.random() < 0.7 ? cfg.colors.white : cfg.colors.paleGold;
+                            break;
+                        case 'beam':
+                            speed = 3 + Math.random() * 7;
+                            const beamAngle = angle - Math.PI / 2 + (Math.random() - 0.5) * 0.35;
+                            vx = Math.cos(beamAngle) * speed;
+                            vy = Math.sin(beamAngle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 4;
+                            life = cfg.particleLife.min * 0.5 + Math.random() * cfg.particleLife.max * 0.6;
+                            colorChoice = Math.random() < 0.6 ? cfg.colors.white : cfg.colors.gold;
+                            break;
+                        case 'split':
+                            const splitDir = (i < count / 2) ? -0.55 : 0.55;
+                            const splitAngle = angle - Math.PI / 2 + splitDir + (Math.random() - 0.5) * 0.5;
+                            speed = 2.5 + Math.random() * 5;
+                            vx = Math.cos(splitAngle) * speed;
+                            vy = Math.sin(splitAngle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 4.5;
+                            life = cfg.particleLife.min + Math.random() * cfg.particleLife.max * 0.7;
+                            colorChoice = i < count / 2 ? cfg.colors.gold : cfg.colors.warmOrange;
+                            break;
+                        case 'rise':
+                            speed = 0.6 + Math.random() * 3;
+                            const riseAngle = -Math.PI / 2 + (Math.random() - 0.5) * 1.2;
+                            vx = Math.cos(riseAngle) * speed;
+                            vy = Math.sin(riseAngle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 5.5;
+                            life = cfg.particleLife.min + Math.random() * cfg.particleLife.max;
+                            colorChoice = Math.random() < 0.5 ? cfg.colors.roseGold : cfg.colors.softPink;
+                            break;
+                        case 'burst':
+                            speed = 2 + Math.random() * 8;
+                            vx = Math.cos(angle) * speed;
+                            vy = Math.sin(angle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 7;
+                            life = cfg.particleLife.min * 0.4 + Math.random() * cfg.particleLife.max * 0.7;
+                            colorChoice = [cfg.colors.gold, cfg.colors.warmOrange, cfg.colors.white, cfg.colors
+                                .amber
+                            ][Math.floor(Math.random() * 4)];
+                            break;
+                        default: // free
+                            speed = 0.2 + Math.random() * 1.5;
+                            vx = Math.cos(angle) * speed;
+                            vy = Math.sin(angle) * speed;
+                            size = cfg.particleSizeRange.min + Math.random() * 3;
+                            life = cfg.particleLife.min + Math.random() * cfg.particleLife.max;
+                            colorChoice = cfg.colors.amber;
+                    }
+                    spawnParticle(x, y, vx, vy, life, size, colorChoice);
+                }
+            }
+
+            function updateAllParticles() {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    if (!particles[i].isAlive()) {
+                        particles.splice(i, 1);
+                    }
+                }
+            }
+
+            function drawAllParticles(ctx) {
+                // 按大小排序，大的先画（在底层）
+                const sorted = [...particles].sort((a, b) => b.size - a.size);
+                for (const p of sorted) {
+                    p.draw(ctx);
+                }
+            }
+
+            // ==================== 手势识别 ====================
+            function getDistance(p1, p2) {
+                const dx = p1.x - p2.x;
+                const dy = p1.y - p2.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            function isFingerExtended(landmarks, tipIdx, baseIdx, wristIdx) {
+                const tip = landmarks[tipIdx];
+                const base = landmarks[baseIdx];
+                const wrist = landmarks[wristIdx];
+                const tipDist = getDistance(tip, wrist);
+                const baseDist = getDistance(base, wrist);
+                return tipDist > baseDist * CONFIG.fingerStraightThreshold;
+            }
+
+            function isThumbExtended(landmarks) {
+                const tip = landmarks[4];
+                const base = landmarks[2];
+                const wrist = landmarks[0];
+                const tipDist = getDistance(tip, wrist);
+                const baseDist = getDistance(base, wrist);
+                return tipDist > baseDist * CONFIG.thumbStraightThreshold;
+            }
+
+            function classifyGesture(landmarks) {
+                const wristIdx = 0;
+                const thumbExtended = isThumbExtended(landmarks);
+                const indexExtended = isFingerExtended(landmarks, 8, 5, wristIdx);
+                const middleExtended = isFingerExtended(landmarks, 12, 9, wristIdx);
+                const ringExtended = isFingerExtended(landmarks, 16, 13, wristIdx);
+                const pinkyExtended = isFingerExtended(landmarks, 20, 17, wristIdx);
+
+                const extendedCount = [thumbExtended, indexExtended, middleExtended, ringExtended, pinkyExtended]
+                    .filter(Boolean).length;
+                const fourFingersExtended = indexExtended && middleExtended && ringExtended && pinkyExtended;
+                const allExtended = thumbExtended && fourFingersExtended;
+                const noneExtended = extendedCount === 0;
+
+                // 大拇指向上：仅拇指伸直，且拇指尖在手腕上方
+                if (thumbExtended && !indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+                    const thumbTip = landmarks[4];
+                    const wrist = landmarks[0];
+                    if (thumbTip.y < wrist.y - 0.04) {
+                        return 'rise';
+                    }
+                }
+
+                // 五指张开
+                if (allExtended) return 'expand';
+
+                // 握拳
+                if (noneExtended) return 'contract';
+
+                // 仅食指伸直 → 指向
+                if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+                    return 'beam';
+                }
+
+                // V手势：食指+中指伸直，无名指和小指弯曲
+                if (indexExtended && middleExtended && !ringExtended && !pinkyExtended) {
+                    return 'split';
+                }
+
+                // 默认根据伸直手指数量判断
+                if (extendedCount >= 4) return 'expand';
+                if (extendedCount <= 1) return 'contract';
+                if (indexExtended && !middleExtended) return 'beam';
+
+                return 'free';
+            }
+
+            function getHandCenter(landmarks) {
+                // 使用手腕和中指根之间的中点作为手掌中心
+                const wrist = landmarks[0];
+                const middleBase = landmarks[9];
+                return {
+                    x: (wrist.x + middleBase.x) / 2,
+                    y: (wrist.y + middleBase.y) / 2,
+                };
+            }
+
+            function getHandRadius(landmarks) {
+                const wrist = landmarks[0];
+                const middleTip = landmarks[12];
+                const dist = getDistance(wrist, middleTip);
+                return Math.max(30, dist * 0.55);
+            }
+
+            function getIndexFingerDirection(landmarks) {
+                const base = landmarks[5];
+                const tip = landmarks[8];
+                const dx = tip.x - base.x;
+                const dy = tip.y - base.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len < 0.001) return { dx: 0, dy: -1 };
+                return { dx: dx / len, dy: dy / len };
+            }
+
+            // ==================== MediaPipe Hands 设置 ====================
+            let handsInstance = null;
+
+            async function initMediaPipe() {
+                try {
+                    handsInstance = new Hands({
+                        locateFile: (file) => {
+                            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
+                        }
+                    });
+
+                    handsInstance.setOptions({
+                        maxNumHands: 1,
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.7,
+                        minTrackingConfidence: 0.6,
+                    });
+
+                    handsInstance.onResults(onHandResults);
+
+                    // 初始化摄像头
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user',
+                        },
+                        audio: false,
+                    });
+
+                    videoPreview.srcObject = stream;
+                    await videoPreview.play();
+
+                    // 使用 Camera 工具类
+                    const camera = new Camera(videoPreview, {
+                        onFrame: async () => {
+                            if (handsInstance && videoPreview.readyState >= 2) {
+                                await handsInstance.send({ image: videoPreview });
+                            }
+                        },
+                        width: 640,
+                        height: 480,
+                    });
+                    await camera.start();
+
+                    isMediaPipeReady = true;
+                    loadingHint.style.opacity = '0';
+                    setTimeout(() => { loadingHint.style.display = 'none'; }, 600);
+                    gestureLabel.textContent = '🌟 等待手势';
+                    gestureSub.textContent = '将手放入摄像头视野';
+
+                    console.log('✅ MediaPipe Hands 初始化成功');
+                } catch (err) {
+                    console.error('初始化失败:', err);
+                    loadingHint.innerHTML =
+                        '⚠️ 无法访问摄像头<br><small style="font-size:0.75rem;opacity:0.7;">请检查权限或使用HTTPS</small>';
+                    loadingHint.style.color = '#ff6b6b';
+                    // 即使没有摄像头，粒子系统仍然可以运行（自由模式）
+                    isMediaPipeReady = true; // 允许粒子系统运行
+                    loadingHint.style.opacity = '0.6';
+                    gestureLabel.textContent = '✨ 自由模式';
+                    gestureSub.textContent = '摄像头未就绪，粒子自由漂浮';
+                }
+            }
+
+            function onHandResults(results) {
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+                    const handCenter = getHandCenter(landmarks);
+                    const handRadius = getHandRadius(landmarks);
+                    const gesture = classifyGesture(landmarks);
+                    const indexDir = getIndexFingerDirection(landmarks);
+
+                    handData = {
+                        landmarks: landmarks,
+                        center: handCenter,
+                        radius: handRadius,
+                        gesture: gesture,
+                        indexDirection: indexDir,
+                        timestamp: performance.now(),
+                    };
+                    handLostCounter = 0;
+                    hasHandBeenDetected = true;
+
+                    // 手势防抖
+                    if (gesture === gestureCandidate) {
+                        gestureCandidateCount++;
+                        if (gestureCandidateCount >= CONFIG.gestureDebounceFrames && gestureCandidate !== currentGesture) {
+                            previousGesture = currentGesture;
+                            currentGesture = gestureCandidate;
+                            gestureJustChanged = true;
+                            burstParticlesRemaining = CONFIG.particlesPerFrame.burst;
+                            updateGestureUI();
+                        }
+                    } else {
+                        gestureCandidate = gesture;
+                        gestureCandidateCount = 1;
+                    }
+                } else {
+                    handLostCounter++;
+                    if (handLostCounter > CONFIG.handLostFrames && handData !== null) {
+                        handData = null;
+                        if (currentGesture !== 'free') {
+                            previousGesture = currentGesture;
+                            currentGesture = 'free';
+                            gestureJustChanged = true;
+                            burstParticlesRemaining = Math.floor(CONFIG.particlesPerFrame.burst * 0.5);
+                            updateGestureUI();
+                        }
+                        gestureCandidate = 'free';
+                        gestureCandidateCount = 0;
+                        smoothHandX = null;
+                        smoothHandY = null;
+                    }
+                }
+            }
+
+            function updateGestureUI() {
+                const labels = {
+                    free: '✨ 自由漂浮',
+                    expand: '🖐️ 张开手掌 · 扩散',
+                    contract: '✊ 握拳 · 收缩',
+                    beam: '☝️ 食指指向 · 光束',
+                    split: '✌️ V字手势 · 分叉',
+                    rise: '👍 拇指向上 · 升腾',
+                };
+                const subs = {
+                    free: '粒子缓慢自由漂浮',
+                    expand: '粒子从掌心向外扩散',
+                    contract: '粒子向掌心聚集收缩',
+                    beam: '粒子沿食指方向射出',
+                    split: '粒子分两股沿指间射出',
+                    rise: '粒子向上飘升飞舞',
+                };
+                gestureLabel.textContent = labels[currentGesture] || labels['free'];
+                gestureSub.textContent = subs[currentGesture] || subs['free'];
+
+                // 添加切换动画
+                gestureLabel.style.transform = 'scale(1.08)';
+                gestureLabel.style.textShadow = '0 0 50px rgba(255,180,60,0.9), 0 0 100px rgba(255,140,20,0.6)';
+                setTimeout(() => {
+                    gestureLabel.style.transform = 'scale(1)';
+                    gestureLabel.style.textShadow = '0 0 30px rgba(255,160,40,0.7), 0 0 80px rgba(255,140,20,0.4)';
+                }, 200);
+            }
+
+            // ==================== 渲染循环 ====================
+            function resizeCanvas() {
+                canvasWidth = window.innerWidth;
+                canvasHeight = window.innerHeight;
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+            }
+
+            function getCanvasCoords(normalizedX, normalizedY) {
+                // 前置摄像头镜像
+                return {
+                    x: (1 - normalizedX) * canvasWidth,
+                    y: normalizedY * canvasHeight,
+                };
+            }
+
+            function drawGlowCore(ctx, cx, cy, radius, gesture) {
+                // 多层光晕
+                const layers = [
+                    { r: radius * 1.5, alpha: 0.06, color: '255,200,120' },
+                    { r: radius * 0.9, alpha: 0.12, color: '255,180,80' },
+                    { r: radius * 0.5, alpha: 0.22, color: '255,220,160' },
+                    { r: radius * 0.22, alpha: 0.45, color: '255,240,210' },
+                    { r: radius * 0.08, alpha: 0.85, color: '255,255,245' },
+                ];
+
+                for (const layer of layers) {
+                    const gradient = ctx.createRadialGradient(cx, cy, layer.r * 0.05, cx, cy, layer.r);
+                    gradient.addColorStop(0, `rgba(${layer.color},${layer.alpha})`);
+                    gradient.addColorStop(0.5, `rgba(${layer.color},${layer.alpha * 0.5})`);
+                    gradient.addColorStop(1, `rgba(${layer.color},0)`);
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, layer.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 内核亮点
+                const innerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 0.12);
+                innerGlow.addColorStop(0, 'rgba(255,255,255,0.95)');
+                innerGlow.addColorStop(0.4, 'rgba(255,240,200,0.6)');
+                innerGlow.addColorStop(1, 'rgba(255,180,60,0)');
+                ctx.fillStyle = innerGlow;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.12, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            function render(timestamp) {
+                requestAnimationFrame(render);
+
+                if (!isMediaPipeReady) return;
+
+                resizeCanvas();
+
+                // 拖尾效果 - 半透明覆盖
+                ctx.fillStyle = `rgba(5,5,16,${CONFIG.trailAlpha})`;
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+                // 处理手部数据
+                let emitX, emitY, emitRadius, activeGesture;
+
+                if (handData && handData.center) {
+                    const coords = getCanvasCoords(handData.center.x, handData.center.y);
+                    const rawX = coords.x;
+                    const rawY = coords.y;
+                    const rawRadius = handData.radius * Math.min(canvasWidth, canvasHeight) * 0.55;
+
+                    // 平滑处理
+                    if (smoothHandX === null) {
+                        smoothHandX = rawX;
+                        smoothHandY = rawY;
+                        smoothHandRadius = rawRadius;
+                    } else {
+                        smoothHandX += (rawX - smoothHandX) * smoothingFactor;
+                        smoothHandY += (rawY - smoothHandY) * smoothingFactor;
+                        smoothHandRadius += (rawRadius - smoothHandRadius) * smoothingFactor;
+                    }
+
+                    emitX = smoothHandX;
+                    emitY = smoothHandY;
+                    emitRadius = Math.max(25, Math.min(CONFIG.glowCoreMaxRadius, smoothHandRadius));
+                    activeGesture = currentGesture;
+                } else {
+                    emitX = canvasWidth / 2 + Math.sin(timestamp * 0.0003) * canvasWidth * 0.25;
+                    emitY = canvasHeight / 2 + Math.cos(timestamp * 0.0004) * canvasHeight * 0.2;
+                    emitRadius = CONFIG.glowCoreBaseRadius * 0.5;
+                    activeGesture = 'free';
+                    smoothHandX = null;
+                    smoothHandY = null;
+                    smoothHandRadius = 60;
+                }
+
+                // 绘制光晕核心
+                if (hasHandBeenDetected || handData) {
+                    const coreRadius = activeGesture === 'contract' ? emitRadius * 0.45 :
+                        activeGesture === 'expand' ? emitRadius * 1.3 :
+                            emitRadius;
+                    drawGlowCore(ctx, emitX, emitY, Math.max(20, coreRadius), activeGesture);
+                } else if (activeGesture === 'free') {
+                    // 自由模式下也有微弱的光晕
+                    drawGlowCore(ctx, emitX, emitY, emitRadius * 0.7, 'free');
+                }
+
+                // 生成粒子
+                let spawnCount = CONFIG.particlesPerFrame[activeGesture] || CONFIG.particlesPerFrame.free;
+
+                // 爆发粒子
+                if (gestureJustChanged && burstParticlesRemaining > 0) {
+                    const burstNow = Math.min(burstParticlesRemaining, CONFIG.particlesPerFrame.burst);
+                    spawnParticlesAt(emitX, emitY, burstNow, 'burst');
+                    burstParticlesRemaining -= burstNow;
+                    if (burstParticlesRemaining <= 0) {
+                        gestureJustChanged = false;
+                    }
+                }
+
+                // 正常生成
+                if (activeGesture === 'beam' && handData && handData.indexDirection) {
+                    // 光束模式：沿食指方向
+                    const dir = handData.indexDirection;
+                    const perpCount = Math.max(1, Math.floor(spawnCount));
+                    for (let i = 0; i < perpCount; i++) {
+                        const offsetX = (Math.random() - 0.5) * 30;
+                        const offsetY = (Math.random() - 0.5) * 30;
+                        const speed = 3 + Math.random() * 7;
+                        const spreadAngle = (Math.random() - 0.5) * 0.3;
+                        const cosA = Math.cos(spreadAngle);
+                        const sinA = Math.sin(spreadAngle);
+                        const vx = (dir.dx * cosA - dir.dy * sinA) * speed;
+                        const vy = (dir.dx * sinA + dir.dy * cosA) * speed;
+                        const life = CONFIG.particleLife.min * 0.5 + Math.random() * CONFIG.particleLife.max * 0.55;
+                        const size = CONFIG.particleSizeRange.min + Math.random() * 4;
+                        const color = Math.random() < 0.6 ? CONFIG.colors.white : CONFIG.colors.gold;
+                        spawnParticle(emitX + offsetX, emitY + offsetY, vx, vy, life, size, color);
+                    }
+                } else if (activeGesture === 'split' && handData && handData.landmarks) {
+                    // 分叉模式：沿食指和中指方向
+                    const idxBase = handData.landmarks[5];
+                    const idxTip = handData.landmarks[8];
+                    const midBase = handData.landmarks[9];
+                    const midTip = handData.landmarks[12];
+
+                    const idxDir = {
+                        dx: idxTip.x - idxBase.x,
+                        dy: idxTip.y - idxBase.y
+                    };
+                    const midDir = {
+                        dx: midTip.x - midBase.x,
+                        dy: midTip.y - midBase.y
+                    };
+                    const normalize = (d) => {
+                        const l = Math.sqrt(d.dx * d.dx + d.dy * d.dy) || 1;
+                        return { dx: d.dx / l, dy: d.dy / l };
+                    };
+                    const nIdx = normalize(idxDir);
+                    const nMid = normalize(midDir);
+
+                    const halfCount = Math.max(1, Math.floor(spawnCount / 2));
+                    for (let i = 0; i < halfCount; i++) {
+                        const spread = (Math.random() - 0.5) * 0.45;
+                        const cosA = Math.cos(spread);
+                        const sinA = Math.sin(spread);
+                        const speed = 2.5 + Math.random() * 5;
+                        const vx = (nIdx.dx * cosA - nIdx.dy * sinA) * speed;
+                        const vy = (nIdx.dx * sinA + nIdx.dy * cosA) * speed;
+                        spawnParticle(emitX, emitY, vx, vy,
+                            CONFIG.particleLife.min + Math.random() * CONFIG.particleLife.max * 0.7,
+                            CONFIG.particleSizeRange.min + Math.random() * 4.5,
+                            CONFIG.colors.gold);
+                    }
+                    for (let i = 0; i < halfCount; i++) {
+                        const spread = (Math.random() - 0.5) * 0.45;
+                        const cosA = Math.cos(spread);
+                        const sinA = Math.sin(spread);
+                        const speed = 2.5 + Math.random() * 5;
+                        const vx = (nMid.dx * cosA - nMid.dy * sinA) * speed;
+                        const vy = (nMid.dx * sinA + nMid.dy * cosA) * speed;
+                        spawnParticle(emitX, emitY, vx, vy,
+                            CONFIG.particleLife.min + Math.random() * CONFIG.particleLife.max * 0.7,
+                            CONFIG.particleSizeRange.min + Math.random() * 4.5,
+                            CONFIG.colors.warmOrange);
+                    }
+                } else {
+                    spawnParticlesAt(emitX, emitY, Math.max(1, Math.floor(spawnCount)), activeGesture);
+                }
+
+                // 更新和绘制粒子
+                updateAllParticles();
+                drawAllParticles(ctx);
+
+                // 在手部位置额外绘制光晕顶层（使光晕在粒子之上也有微弱呈现）
+                if (handData || (activeGesture === 'free' && hasHandBeenDetected)) {
+                    const topGlow = ctx.createRadialGradient(emitX, emitY, 0, emitX, emitY, emitRadius * 0.35);
+                    topGlow.addColorStop(0, 'rgba(255,255,250,0.3)');
+                    topGlow.addColorStop(1, 'rgba(255,180,60,0)');
+                    ctx.fillStyle = topGlow;
+                    ctx.beginPath();
+                    ctx.arc(emitX, emitY, emitRadius * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 更新粒子计数显示（调试用，可选）
+                // 在控制台输出: console.log(`粒子数: ${particles.length}, 手势: ${activeGesture}`);
+            }
+
+            // ==================== 启动 ====================
+            function init() {
+                resizeCanvas();
+                // 初始填充背景
+                ctx.fillStyle = '#050510';
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+                // 先启动渲染循环（即使MediaPipe还没准备好，也会显示黑屏）
+                requestAnimationFrame(render);
+
+                // 异步初始化MediaPipe
+                initMediaPipe();
+
+                // 窗口大小调整
+                window.addEventListener('resize', () => {
+                    resizeCanvas();
+                    // 重置平滑位置以避免偏移
+                    if (smoothHandX !== null && handData && handData.center) {
+                        const coords = getCanvasCoords(handData.center.x, handData.center.y);
+                        smoothHandX = coords.x;
+                        smoothHandY = coords.y;
+                    }
+                });
+
+                // 键盘快捷键（调试/备用）
+                window.addEventListener('keydown', (e) => {
+                    const keyMap = {
+                        '1': 'free',
+                        '2': 'expand',
+                        '3': 'contract',
+                        '4': 'beam',
+                        '5': 'split',
+                        '6': 'rise',
+                    };
+                    if (keyMap[e.key] && isMediaPipeReady) {
+                        const newGesture = keyMap[e.key];
+                        if (newGesture !== currentGesture) {
+                            previousGesture = currentGesture;
+                            currentGesture = newGesture;
+                            gestureJustChanged = true;
+                            burstParticlesRemaining = CONFIG.particlesPerFrame.burst;
+                            updateGestureUI();
+                            gestureCandidate = newGesture;
+                            gestureCandidateCount = CONFIG.gestureDebounceFrames;
+                            console.log(`⌨️ 键盘切换手势: ${newGesture}`);
+                        }
+                    }
+                });
+
+                console.log('🚀 手势交互粒子光感特效已启动');
+                console.log('  支持手势: 张开手掌(扩散) | 握拳(收缩) | 食指指向(光束) | V字(分叉) | 拇指向上(升腾)');
+                console.log('  键盘快捷键: 按1-6切换手势模式');
+            }
+
+            // 页面加载完成后初始化
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+
+</html>

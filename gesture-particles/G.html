@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级手势交互粒子光感特效</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 25px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            pointer-events: none;
+        }
+
+        h3 {
+            margin: 0 0 10px 0;
+            font-weight: 400;
+            letter-spacing: 1px;
+            color: #00f0ff;
+        }
+
+        .status-item {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        .highlight {
+            font-weight: bold;
+            color: #ff0077;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 18px;
+            z-index: 100;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loading">正在初始化摄像头及AI模型...</div>
+
+    <div id="ui-container">
+        <h3>手势粒子交互系统</h3>
+        <div class="status-item">当前手势: <span id="gesture-str" class="highlight">等待手部入画...</span></div>
+        <div class="status-item">粒子数量: <span>1,000</span></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const loadingEl = document.getElementById('loading');
+        const gestureStrEl = document.getElementById('gesture-str');
+
+        let particles = [];
+        const PARTICLE_COUNT = 1000;
+
+        // 实时记录手部状态
+        let handData = {
+            x: 0,
+            y: 0,
+            gesture: 'NONE', // 'OPEN', 'FIST', 'OK', 'NONE'
+            angle: 0         // 用于OK手势的旋转动画
+        };
+
+        // 调整画布大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- 1. 粒子系统初始化 ---
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 1.5,
+                    vy: (Math.random() - 0.5) * 1.5,
+                    size: Math.random() * 2 + 1,
+                    baseSize: Math.random() * 2 + 1,
+                    // 随机赋予粒子微弱的独特颜色偏移
+                    colorHue: Math.random() * 40 - 20
+                });
+            }
+        }
+
+        // --- 2. 核心动画与物理引擎 ---
+        function animate() {
+            // 制造半透明蒙版以形成炫丽的拖尾（光感流光）效果
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.12)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            handData.angle += 0.05; // 累加旋转角度（供OK手势使用）
+
+            particles.forEach(p => {
+                let dx = handData.x - p.x;
+                let dy = handData.y - p.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                let renderColor = 'rgba(0, 240, 255, 0.8)'; // 默认青色
+
+                if (handData.gesture !== 'NONE' && dist < 600) {
+                    if (handData.gesture === 'FIST') {
+                        // 【黑洞收缩模式】: 强力向心引力，越近越快
+                        let force = (500 - dist) * 0.0005;
+                        if (force < 0) force = 0;
+                        p.vx += dx * force;
+                        p.vy += dy * force;
+                        renderColor = `hsla(${340 + p.colorHue}, 100%, 60%, 0.8)`; // 魅惑粉红
+                        p.size = p.baseSize * 1.5;
+                    }
+                    else if (handData.gesture === 'OPEN') {
+                        // 【星云扩散模式】: 强力排斥力
+                        if (dist < 250) {
+                            let force = (250 - dist) * 0.0008;
+                            p.vx -= dx * force;
+                            p.vy -= dy * force;
+                        }
+                        renderColor = `hsla(${190 + p.colorHue}, 100%, 60%, 0.8)`; // 科技青蓝
+                        p.size = p.baseSize;
+                    }
+                    else if (handData.gesture === 'OK') {
+                        // 【炫彩光环模式】: 粒子被吸入特定半径，并围绕手心旋转
+                        const targetRadius = 120;
+                        let orbitForce = (dist - targetRadius) * 0.02;
+
+                        // 向目标圆环半径靠拢
+                        p.vx -= (dx / dist) * orbitForce;
+                        p.vy -= (dy / dist) * orbitForce;
+
+                        // 施加切线旋转力
+                        let tangentX = -dy / dist;
+                        let tangentY = dx / dist;
+                        p.vx += tangentX * 1.5;
+                        p.vy += tangentY * 1.5;
+
+                        // 渐变霓虹色
+                        renderColor = `hsla(${(handData.angle * 20 + dist) % 360}, 95%, 65%, 0.9)`;
+                        p.size = p.baseSize * 1.2;
+                    }
+                } else {
+                    // 无手势时，粒子回归自由状态，并施加轻微阻尼避免无限加速
+                    p.size = p.baseSize;
+                }
+
+                // 常规速度衰减与位置更新
+                p.vx *= 0.96;
+                p.vy *= 0.96;
+                p.x += p.vx + (Math.random() - 0.5) * 0.2; // 加入微小布朗运动
+                p.y += p.vy + (Math.random() - 0.5) * 0.2;
+
+                // 边界碰撞回弹
+                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                // 绘制带高光感知的粒子
+                ctx.beginPath();
+                ctx.shadowBlur = p.size * 2; // 光感核心：利用Canvas阴影实现发光
+                ctx.shadowColor = renderColor;
+                ctx.fillStyle = renderColor;
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 重置阴影，避免影响后续清屏性能
+            ctx.shadowBlur = 0;
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- 3. 复杂手势识别核心算法 ---
+        function getDistance(p1, p2) {
+            return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        }
+
+        function analyzeGesture(landmarks) {
+            // 在 MediaPipe 归一化坐标系中判定
+
+            // A. 判断手指是否伸直 (指尖Y坐标小于关节Y坐标则为伸直)
+            const isIndexExtended = landmarks[8].y < landmarks[6].y;
+            const isMiddleExtended = landmarks[12].y < landmarks[10].y;
+            const isRingExtended = landmarks[16].y < landmarks[14].y;
+            const isPinkyExtended = landmarks[20].y < landmarks[18].y;
+
+            // 计算伸直的手指数量（不含大拇指）
+            const extendedFingersCount = [isIndexExtended, isMiddleExtended, isRingExtended, isPinkyExtended].filter(Boolean).length;
+
+            // B. 计算关键距离
+            const thumbTip = landmarks[4];
+            const indexTip = landmarks[8];
+            const thumbIndexDist = getDistance(thumbTip, indexTip); // 大拇指到食指尖的距离
+
+            // 1. 判定 OK 手势: 大拇指和食指捏合，且中指、无名指、小拇指明显伸直
+            if (thumbIndexDist < 0.04 && isMiddleExtended && isRingExtended && isPinkyExtended) {
+                return 'OK';
+            }
+
+            // 2. 判定 握拳 (FIST): 所有手指全弯曲
+            if (extendedFingersCount === 0) {
+                return 'FIST';
+            }
+
+            // 3. 判定 张开 (OPEN): 手指全部伸直
+            if (extendedFingersCount === 4) {
+                return 'OPEN';
+            }
+
+            return 'NONE';
+        }
+
+        // --- 4. MediaPipe 核心回调 ---
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // 镜像处理 X 轴，使用户动作与屏幕同向，并映射到全屏画布
+                handData.x = (1 - landmarks[9].x) * canvas.width; // 9号点是中指根部，作为手心锚点
+                handData.y = landmarks[9].y * canvas.height;
+
+                // 运行手势判定算法
+                const currentGesture = analyzeGesture(landmarks);
+                handData.gesture = currentGesture;
+
+                // UI 状态更新
+                if (currentGesture === 'OPEN') {
+                    gestureStrEl.innerText = "张开手掌 (粒子排斥扩散)";
+                    gestureStrEl.style.color = "#00aaff";
+                } else if (currentGesture === 'FIST') {
+                    gestureStrEl.innerText = "强力握拳 (黑洞引力收缩)";
+                    gestureStrEl.style.color = "#ff0055";
+                } else if (currentGesture === 'OK') {
+                    gestureStrEl.innerText = "OK手势 (霓虹漩涡光环)";
+                    gestureStrEl.style.color = "#ffbb00";
+                } else {
+                    gestureStrEl.innerText = "未知手势 (粒子自由游走)";
+                    gestureStrEl.style.color = "#ffffff";
+                }
+            } else {
+                handData.gesture = 'NONE';
+                gestureStrEl.innerText = "等待手部入画...";
+                gestureStrEl.style.color = "#888";
+            }
+        }
+
+        // --- 5. 初始化 AI 模型与摄像头 ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        // 创建隐藏的 video 标签用于捕获流
+        const video = document.createElement('video');
+        video.style.display = 'none';
+        document.body.appendChild(video);
+
+        const camera = new Camera(video, {
+            onFrame: async () => {
+                await hands.send({ image: video });
+            },
+            width: 640,
+            height: 480
+        });
+
+        // 启动系统
+        camera.start()
+            .then(() => {
+                loadingEl.style.display = 'none'; // 移除加载提示
+                initParticles();
+                animate();
+            })
+            .catch(err => {
+                loadingEl.innerText = "摄像头启动失败，请检查权限。";
+                console.error(err);
+            });
+
+    </script>
+</body>
+
+</html>
